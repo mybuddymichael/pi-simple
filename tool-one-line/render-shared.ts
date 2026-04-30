@@ -80,6 +80,14 @@ type CollapsedIntentResultRenderer = (
 	intent: string | undefined,
 ) => Component;
 
+type ExpandedIntentResultRenderer = (
+	result: any,
+	theme: Theme,
+	context: RenderContext,
+	label: string,
+	intent: string | undefined,
+) => Component;
+
 type CollapsedStandardResultRenderer = (
 	result: any,
 	theme: Theme,
@@ -647,6 +655,7 @@ export function registerIntentTool(
 	toolName: BuiltInToolName,
 	buildLabel: LabelBuilder,
 	renderCollapsedResult?: CollapsedIntentResultRenderer,
+	renderExpandedResult?: ExpandedIntentResultRenderer,
 ): void {
 	pi.registerTool({
 		...getBuiltInTool(process.cwd(), toolName),
@@ -672,7 +681,7 @@ export function registerIntentTool(
 			const toolContext = context as RenderContext;
 			const rawContext = context as any;
 			const label = buildLabel(rawContext.args, toolTheme, rawContext.cwd);
-			if (!renderCollapsedResult) {
+			if (!renderCollapsedResult && !renderExpandedResult) {
 				return renderStandardIntentToolResult(
 					toolName,
 					result as ToolResult,
@@ -686,13 +695,18 @@ export function registerIntentTool(
 			if (options.isPartial) return resetContainer(toolContext);
 			stopSpinner(toolContext);
 			if (!options.expanded) {
-				return renderCollapsedResult(
-					result as ToolResult,
-					toolTheme,
-					toolContext,
-					label,
-					rawContext.args.intent,
-				);
+				return renderCollapsedResult
+					? renderCollapsedResult(
+						result as ToolResult,
+						toolTheme,
+						toolContext,
+						label,
+						rawContext.args.intent,
+					)
+					: renderToolWithIntent(toolTheme, toolContext, label, rawContext.args.intent);
+			}
+			if (renderExpandedResult) {
+				return renderExpandedResult(result as ToolResult, toolTheme, toolContext, label, rawContext.args.intent);
 			}
 			return renderExpandedResultWithHeader(toolTheme, toolContext, label, (builtInContext) => (
 				renderBuiltInToolResult(toolName, rawContext.cwd, result as ToolResult, options, theme, builtInContext)
