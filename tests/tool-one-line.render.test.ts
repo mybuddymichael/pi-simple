@@ -14,6 +14,7 @@ type RenderComponentLike = {
 
 type RegisteredToolLike = {
 	name: string;
+	renderCall?: (args: unknown, theme: unknown, context: unknown) => RenderComponentLike;
 	renderResult?: (result: unknown, options: unknown, theme: unknown, context: unknown) => RenderComponentLike;
 };
 
@@ -81,7 +82,11 @@ function renderBashResult(tool: RegisteredToolLike | undefined, text: string): s
 	);
 }
 
-function createRenderContext(args: Record<string, unknown>, expanded: boolean): Record<string, unknown> {
+function createRenderContext(
+	args: Record<string, unknown>,
+	expanded: boolean,
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
 	return {
 		args,
 		state: {},
@@ -95,8 +100,66 @@ function createRenderContext(args: Record<string, unknown>, expanded: boolean): 
 		expanded,
 		showImages: true,
 		isError: false,
+		...overrides,
 	};
 }
+
+describe("tool-one-line lifecycle icons", () => {
+	beforeAll(() => {
+		initTheme("dark");
+	});
+
+	it("renders partial tool calls with a static question mark and no interval state", () => {
+		const { api, registeredTools } = createExtensionApiStub();
+		toolOneLineExtension(api);
+
+		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		expect(bashTool?.renderCall).toBeTypeOf("function");
+		const context = createRenderContext(
+			{ command: "sleep 3", intent: "test pending icon" },
+			false,
+			{ isPartial: true },
+		);
+		const rendered = normalizeRenderedText(
+			bashTool!.renderCall!(context.args, createTheme(), context),
+		);
+
+		expect(rendered).toContain("?");
+		expect(context.state).not.toHaveProperty("interval");
+	});
+
+	it("renders successful completed tool calls with a check mark", () => {
+		const { api, registeredTools } = createExtensionApiStub();
+		toolOneLineExtension(api);
+
+		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		const rendered = renderBashResult(bashTool, "done");
+
+		expect(rendered).toContain("✓");
+	});
+
+	it("renders failed completed tool calls with a cross mark", () => {
+		const { api, registeredTools } = createExtensionApiStub();
+		toolOneLineExtension(api);
+
+		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		expect(bashTool?.renderResult).toBeTypeOf("function");
+		const rendered = normalizeRenderedText(
+			bashTool!.renderResult!(
+				{ content: [{ type: "text", text: "failed" }], details: {}, isError: true },
+				{ isPartial: false, expanded: false },
+				createTheme(),
+				createRenderContext(
+					{ command: "false", intent: "test error icon" },
+					false,
+					{ isError: true },
+				),
+			),
+		);
+
+		expect(rendered).toContain("✕");
+	});
+});
 
 describe("tool-one-line settled bash rendering", () => {
 	beforeAll(() => {

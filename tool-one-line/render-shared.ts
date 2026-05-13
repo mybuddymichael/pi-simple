@@ -62,8 +62,7 @@ export type RenderContext = {
 	isError: boolean;
 };
 
-export type SpinnerState = {
-	interval?: NodeJS.Timeout;
+export type ToolRenderState = {
 	expandedResultBody?: Component;
 };
 
@@ -97,8 +96,6 @@ type CollapsedStandardResultRenderer = (
 
 type ExpandedStandardResultPreparer = (result: any, context: RenderContext) => void;
 
-const SPINNER_INTERVAL_MS = 80;
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const NBSP = "\u00A0";
 const WRAPPABLE_PATH_SEPARATOR = "/ ";
 const WRAPPABLE_GREP_SEPARATOR = "| ";
@@ -383,31 +380,8 @@ export function renderToolWithIntent(
 	return component;
 }
 
-export function startSpinner(context: RenderContext): void {
-	const state = context.state as SpinnerState;
-	if (state.interval) return;
-	state.interval = setInterval(() => context.invalidate(), SPINNER_INTERVAL_MS);
-}
-
-export function stopSpinner(context: RenderContext): void {
-	const state = context.state as SpinnerState;
-	if (!state.interval) return;
-	clearInterval(state.interval);
-	state.interval = undefined;
-}
-
-export function spinnerFrame(): string {
-	const index = Math.floor(Date.now() / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length;
-	return SPINNER_FRAMES[index] ?? SPINNER_FRAMES[0];
-}
-
 export function statusPrefix(theme: Theme, context: RenderContext): string {
-	if (context.isPartial) {
-		startSpinner(context);
-		return theme.fg("accent", spinnerFrame());
-	}
-
-	stopSpinner(context);
+	if (context.isPartial) return theme.fg("accent", "?");
 	return context.isError ? theme.fg("error", "✕") : theme.fg("success", "✓");
 }
 
@@ -463,7 +437,7 @@ export function renderExpandedResultWithHeader(
 ): Container {
 	const component = resetContainer(context);
 	component.addChild(renderToolWithIntent(theme, { ...context, lastComponent: undefined }, label, intent));
-	const state = context.state as SpinnerState;
+	const state = context.state as ToolRenderState;
 	const builtInContext: RenderContext = { ...context, lastComponent: state.expandedResultBody };
 	const body = renderBuiltInResult(builtInContext) ?? resetContainer({ ...context, lastComponent: undefined });
 	state.expandedResultBody = body;
@@ -472,7 +446,9 @@ export function renderExpandedResultWithHeader(
 }
 
 export function renderPartialCallLine(theme: Theme, context: RenderContext, label: string): Component {
-	if (!context.isPartial) return resetContainer(context);
+	if (!context.isPartial) {
+		return resetContainer(context);
+	}
 	return oneLine(theme, context, label);
 }
 
@@ -482,7 +458,9 @@ export function renderPartialCallWithIntent(
 	label: string,
 	intent: string | undefined,
 ): Component {
-	if (!context.isPartial) return resetContainer(context);
+	if (!context.isPartial) {
+		return resetContainer(context);
+	}
 	return renderToolWithIntent(theme, context, label, intent);
 }
 
@@ -498,7 +476,6 @@ export function renderStandardToolResult<TName extends BuiltInToolName>(
 	if (!options.expanded) {
 		return oneLine(theme, context, label);
 	}
-	stopSpinner(context);
 	return renderExpandedResultWithHeader(theme, context, label, (builtInContext) => (
 		renderBuiltInToolResult(toolName, context.cwd, result, options, theme, builtInContext)
 	));
@@ -517,7 +494,6 @@ export function renderStandardIntentToolResult<TName extends BuiltInToolName>(
 	if (!options.expanded) {
 		return renderToolWithIntent(theme, context, label, intent);
 	}
-	stopSpinner(context);
 	return renderExpandedResultWithHeader(theme, context, label, (builtInContext) => (
 		renderBuiltInToolResult(toolName, context.cwd, result, options, theme, builtInContext)
 	), intent);
@@ -583,7 +559,7 @@ export function syncImageAttachmentsWithExpandedState(
 ): void {
 	if (!result || !Array.isArray(result.content)) return;
 	const content = result.content;
-	const state = context.state as SpinnerState & Record<string, unknown>;
+	const state = context.state as ToolRenderState & Record<string, unknown>;
 	const hiddenContent = state[stateKey];
 	const hasImages = content.some((part) => part?.type === "image");
 
@@ -633,7 +609,6 @@ export function registerStandardTool(
 				);
 			}
 			if (options.isPartial) return resetContainer(toolContext);
-			stopSpinner(toolContext);
 			if (!options.expanded) {
 				return renderCollapsedResult(
 					result as ToolResult,
@@ -693,7 +668,6 @@ export function registerIntentTool(
 				);
 			}
 			if (options.isPartial) return resetContainer(toolContext);
-			stopSpinner(toolContext);
 			if (!options.expanded) {
 				return renderCollapsedResult
 					? renderCollapsedResult(
